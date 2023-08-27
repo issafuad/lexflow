@@ -44,6 +44,8 @@ html_theme = 'furo'
 epub_show_urls = 'footnote'
 
 # -- Run sphinx-apidoc automatically
+autodoc_mock_imports = ["pydantic"]
+
 
 def run_apidoc(_):
     from sphinx.ext.apidoc import main
