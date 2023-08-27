@@ -47,7 +47,7 @@ epub_show_urls = 'footnote'
 def run_apidoc(_):
     from sphinx.ext.apidoc import main
     cur_dir = os.path.abspath(os.path.dirname(__file__))
-    module_path = os.path.join(cur_dir, "..", "..", "app")  # adjust to point to the 'app' directory
+    module_path = os.path.join(cur_dir, "..", "..", "src/base")  # adjust to point to the 'app' directory
     main(['-e', '-f', '-o', os.path.join(cur_dir, 'generated'), module_path])  # output to the 'generated' directory
 
 def setup(app):
