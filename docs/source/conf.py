@@ -32,7 +32,8 @@ intersphinx_disabled_domains = ['std']
 templates_path = ['_templates']
 
 # Add the project directory to the system path
-sys.path.insert(0, os.path.abspath('..'))
+sys.path.insert(0, os.path.abspath('../../src'))
+
 
 # -- Options for HTML output
 
@@ -47,7 +48,7 @@ epub_show_urls = 'footnote'
 def run_apidoc(_):
     from sphinx.ext.apidoc import main
     cur_dir = os.path.abspath(os.path.dirname(__file__))
-    module_path = os.path.join(cur_dir, "..", "..", "src/base")  # adjust to point to the 'app' directory
+    module_path = os.path.join(cur_dir, "..", "..", "src")  # pointing to the 'src' directory
     main(['-e', '-f', '-o', os.path.join(cur_dir, 'generated'), module_path])  # output to the 'generated' directory
 
 def setup(app):
