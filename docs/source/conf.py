@@ -23,17 +23,27 @@ extensions = [
     'sphinx.ext.intersphinx',
 ]
 
+html_sidebars = {
+    "**": [
+        "sidebar/scroll-start.html",
+        "sidebar/brand.html",
+        "sidebar/search.html",
+        "sidebar/navigation.html",  # This should reflect your global TOC
+        "sidebar/ethical-ads.html",
+        "sidebar/scroll-end.html",
+    ]
+}
 intersphinx_mapping = {
     'python': ('https://docs.python.org/3/', None),
     'sphinx': ('https://www.sphinx-doc.org/en/master/', None),
 }
 intersphinx_disabled_domains = ['std']
+master_doc = 'index'
 
 templates_path = ['_templates']
 
 # Add the project directory to the system path
 sys.path.insert(0, os.path.abspath('../../src'))
-
 
 # -- Options for HTML output
 

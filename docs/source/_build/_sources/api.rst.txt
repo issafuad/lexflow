@@ -6,7 +6,6 @@ Base
 
 .. autosummary::
     :toctree: generated/
-
     base.executable
 
 Modules Overview

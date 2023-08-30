@@ -11,13 +11,55 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
 
+# class RegistryAccessor:
+#     _current_registry = None
+#
+#     @classmethod
+#     def set_current_registry(cls, registry):
+#         cls._current_registry = registry
+#
+#     @classmethod
+#     def get_current_registry(cls):
+#         if cls._current_registry is None:
+#             raise ValueError("No registry has been set.")
+#         return cls._current_registry
+#
+# from contextlib import contextmanager
+#
+# @contextmanager
+# def use_registry(registry):
+#     RegistryAccessor.set_current_registry(registry)
+#     yield
+#     RegistryAccessor.set_current_registry(None)
+#
+#
+def test_func():
+    """this function is a test docstring"""
+    return None
+
+def listify_func(x):
+    return x.split('\n')
 
 @pydantic_dataclass
 class Concept:
+    """
+    A simple utility function that doubles the input value.
+
+    Returns
+    -------
+    int or float
+        Double the input value.
+
+    Example
+    -------
+    # >>> utility_function(3)
+    6
+    """
+
     name: StrictStr
     type: Literal['identity', 'list'] = 'identity'
     choice: Literal['all', 'index', 'stringify', 'random'] = 'all'
-    listify_func: Callable = lambda x: x.split('\n')
+    listify_func: Callable = listify_func
     string_content: Union[StrictStr, None] = None
     list_content: List[StrictStr] = None
     inputted: bool = False
@@ -28,26 +70,37 @@ class Concept:
             self.inputted = True
 
     def get_value(self):
+        """
+        A simple utility function that doubles the input value.
+
+        Returns
+        -------
+        int or float
+            Double the input value.
+
+        Example
+        -------
+        # >>> utility_function(3)
+        6
+        """
         if self.type == 'identity':
             if self.string_content:
                 return self.string_content
             else:
                 raise ValueError(f'no string value assigned to {self.__dict__}')
         else:
+            # if list
             if self.choice == 'all':
                 if self.list_content:
                     return self.list_content
                 else:
                     raise ValueError(f'no list value assigned to {self.__dict__}')
 
-    def get_name(self) -> StrictStr:
-        return self.name
-
-    def assign_string_content(self, string_content):
-        self.string_content = string_content
-
-    def assign_list_content(self, list_content):
-        self.list_content = list_content
+    def assign_content(self, content):
+        if self.type == 'identity':
+            self.string_content = content
+        elif self.type == 'list':
+            self.list_content = self.listify_func(content)
 
     def __repr__(self):
         return pprint.pformat(self.__dict__)
@@ -55,7 +108,6 @@ class Concept:
 @pydantic_dataclass
 class Prompt:
     template: StrictStr
-    output: Concept
     inputs: List[StrictStr] = None
     filled_prompt: Union[StrictStr, None] = None
 
@@ -70,12 +122,6 @@ class Prompt:
                            f'object {self} with __dict__ {self.__dict__}')
         self.filled_prompt = self.template.format(**format_dict)
         return self.filled_prompt
-
-    def assign_output_as_string(self, output: StrictStr):
-        self.output.assign_string_content(string_content=output)
-
-    def return_output_concept(self) -> Concept:
-        return self.output
 
     def __repr__(self):
         return pprint.pformat(self.__dict__)
@@ -121,9 +167,6 @@ class ConceptRegistry:
         if concept.name in self.concepts and self.concepts[concept.name] is not concept:
             warnings.warn(f'Overwrite Warning: \n{self.concepts[concept.name]}\n\n Is being overwritten by:\n {concept}')
         self.concepts[concept.name] = concept
-    #
-    # def __repr__(self):
-    #     return pprint.pformat(self.__dict__)
 
     # def __repr__(self):
     #     lines = ['ConceptRegistry:']
@@ -168,9 +211,13 @@ class ExecutableOrchestrator(BaseModel, ABC):
 class ProbabilisticComponent(Executable):
     model: LanguageModel
     prompt: Prompt
+    output_concept: Concept
+    # the inputs names are specified in the template.
+    # the inputs are always specified by strings. because they've already been created
+    #
 
-    def __init__(self, model, prompt):
-        super().__init__(model=model, prompt=prompt)
+    def __init__(self, model, prompt, output_concept):
+        super().__init__(model=model, prompt=prompt, output_concept=output_concept)
 
     # @validate_call
     def run(self, concept_registry: ConceptRegistry, callback=None) -> Concept:
@@ -178,11 +225,30 @@ class ProbabilisticComponent(Executable):
 
         self.prompt.fill(concept_registry.concepts)
         response = self.model.generate_response(self.prompt.filled_prompt)
-        self.prompt.assign_output_as_string(response)
+        self.output_concept.assign_content(content=response)
 
         # TODO fix what is added to the memory
         self.memory.append(response)
-        return self.prompt.return_output_concept()
+        return self.output_concept
+
+
+class SymbolicComponent(Executable):
+    function: Callable
+    # the function should return the same number of the number o the list of output concepts
+    input_concept_names: List[StrictStr]
+    output_concepts: List[Concept]
+
+    def __init__(self, function, input_concepts, output_concepts):
+        super().__init__(function=function, input_concepts=input_concepts, output_concepts=output_concepts)
+
+    def run(self, concept_registry: ConceptRegistry, callback=None) -> List[Concept]:
+        LOGGER.debug(f'Running object: {self.__dict__}')
+        input_concepts = {concept_registry.concepts[name] for name in self.input_concept_names}
+        for output_string, output_concept in zip(self.function(input_concepts), self.output_concepts):
+            output_concept.assign_content(output_string)
+        return self.output_concepts
+
+
 
 
 class Chain(ExecutableOrchestrator):
