@@ -64,29 +64,6 @@ class LanguageModel(BaseModel):
 
 
 @pydantic_dataclass
-class Prompt:
-    template: StrictStr
-    inputs: List[StrictStr] = None
-    filled_prompt: Union[StrictStr, None] = None
-
-    def __post_init__(self):
-        self.inputs = re.findall(r'\{(.*?)\}', self.template)
-
-    def fill(self, running_concepts: Dict[StrictStr, Concept]):
-        try:
-            format_dict = {e: running_concepts[e].get_value() for e in self.inputs}
-        except KeyError as e:
-            raise KeyError(f'Could not find the input {e} in available run concepts {running_concepts.keys()} in'
-                           f'object {self} with __dict__ {self.__dict__}')
-        self.filled_prompt = self.template.format(**format_dict)
-        return self.filled_prompt
-
-    def __repr__(self):
-        return pprint.pformat(self.__dict__)
-
-
-
-@pydantic_dataclass
 class Concept:
     """
     A simple utility function that doubles the input value.
@@ -155,14 +132,60 @@ class Concept:
             self.list_concepts = list_concepts
 
     def iter_listed_concepts(self):
-        if type != 'list':
-            raise Exception('Concept not a list type')
+        if self.type != 'list':
+            raise Exception(f'Concept {self} not a list type')
         for each in self.list_concepts:
             yield each
 
     def __repr__(self):
-        return pprint.pformat(self.__dict__)
+        import json
 
+        def handle_unserializable(obj):
+            # Directly return any natively serializable value
+            # if isinstance(obj, (int, float, str, bool, type(None))):
+            #     return obj
+
+            # Handle function objects
+            if callable(obj):
+                return f"<function {obj.__name__}>"
+
+            # Handle custom objects by serializing their attributes
+            elif hasattr(obj, "__dict__"):
+                return {key: handle_unserializable(value) for key, value in obj.__dict__.items()}
+
+            # Handle objects that are not directly serializable to JSON
+            else:
+                return obj
+                # raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+        def custom_repr(obj):
+            return json.dumps(obj, default=handle_unserializable, sort_keys=True, indent=4, ensure_ascii=False)
+
+        return custom_repr(self.__dict__)
+        # return pprint.pformat(self.__dict__)
+
+
+@pydantic_dataclass
+class Prompt:
+    template: StrictStr
+    inputs: List[StrictStr] = None
+    filled_prompt: Union[StrictStr, None] = None
+
+    def __post_init__(self):
+        self.inputs = re.findall(r'\{(.*?)\}', self.template)
+
+    def fill(self, running_concepts: Dict[StrictStr, Concept]):
+        try:
+            format_dict = {e: running_concepts[e].get_value() for e in self.inputs}
+            # look into list concepts as well
+        except KeyError as e:
+            raise KeyError(f'Could not find the input {e} in available run concepts {running_concepts.keys()} in'
+                           f'object {self} with __dict__ {self.__dict__}')
+        self.filled_prompt = self.template.format(**format_dict)
+        return self.filled_prompt
+
+    def __repr__(self):
+        return pprint.pformat(self.__dict__)
 
 
 @pydantic_dataclass
@@ -180,6 +203,23 @@ class ConceptRegistry:
     def concepts(self) -> Dict[StrictStr, Concept]:
         return self._concepts
 
+    @property
+    def concepts_flattened(self) -> Dict[StrictStr, Concept]:
+        flattened_concepts = {}
+
+        def _flatten_concept(concept: Concept):
+            if concept.name in flattened_concepts:
+                return
+            flattened_concepts[concept.name] = concept
+            if concept.list_concepts:
+                for sub_concept in concept.list_concepts:
+                    _flatten_concept(sub_concept)
+
+        for concept in self._concepts.values():
+            _flatten_concept(concept)
+
+        return flattened_concepts
+
     def update_concepts(self, concept: Concept):
         if concept.name in self.concepts and self.concepts[concept.name] is not concept:
             warnings.warn(f'Overwrite Warning: \n{self.concepts[concept.name]}\n\n Is being overwritten by:\n {concept}')
@@ -194,16 +234,42 @@ class ConceptRegistry:
     #     return '\n'.join(lines)
 
     def __repr__(self):
-        lines = ['ConceptRegistry:']
+        import json
 
-        # Sort the concepts by their level
-        sorted_concepts = sorted(self._concepts.values(), key=lambda c: c.level)
+        def handle_unserializable(obj):
+            # Directly return any natively serializable value
+            # if isinstance(obj, (int, float, str, bool, type(None))):
+            #     return obj
 
-        for concept in sorted_concepts:
-            lines.append(f"  - {concept.name}:")
-            for attr_name, attr_value in vars(concept).items():
-                lines.append(f"    {attr_name.capitalize()}: {attr_value}")
-        return '\n'.join(lines)
+            # Handle function objects
+            if callable(obj):
+                return f"<function {obj.__name__}>"
+
+            # Handle custom objects by serializing their attributes
+            elif hasattr(obj, "__dict__"):
+                return {key: handle_unserializable(value) for key, value in obj.__dict__.items()}
+
+            # Handle objects that are not directly serializable to JSON
+            else:
+                return obj
+                # raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+
+        def custom_repr(obj):
+            return json.dumps(obj, default=handle_unserializable, sort_keys=True, indent=4, ensure_ascii=False)
+
+        return custom_repr(self.__dict__)
+
+    # def __repr__(self):
+    #     lines = ['ConceptRegistry:']
+    #
+    #     # Sort the concepts by their level
+    #     sorted_concepts = sorted(self._concepts.values(), key=lambda c: c.level)
+    #
+    #     for concept in sorted_concepts:
+    #         lines.append(f"  - {concept.name}:")
+    #         for attr_name, attr_value in vars(concept).items():
+    #             lines.append(f"    {attr_name.capitalize()}: {attr_value}")
+    #     return '\n'.join(lines)
 
 
 class Executable(BaseModel, ABC):
@@ -241,10 +307,33 @@ class ExecutableOrchestrator(BaseModel, ABC):
 class ProbabilisticComponent(Executable):
     model: LanguageModel
     prompt: Prompt
+    # input_concepts:
     output_concept: Concept
     # the inputs names are specified in the template.
     # the inputs are always specified by strings. because they've already been created
-    #
+
+    @classmethod
+    def create_iterable_from_concept(cls, concept_name: StrictStr, language_model: LanguageModel, prompt: Prompt, output: Concept):
+        concept_registry = RegistryAccessor.get_current_registry()
+        concept = concept_registry.concepts[concept_name]
+        if concept.type != 'list':
+            raise Exception(
+                f'You need to feed in a concept of type list. Current concept {concept_name} is of type {concept.type}')
+        if output.type != 'list':
+            raise Exception(f'Output concept needs to be of type list.')
+
+        import re
+
+        def replace_with_suffix(s, suffix="_1"):
+            return re.sub(r'\{(.*?)\}', lambda m: '{' + m.group(1) + suffix + '}', s)
+
+        print(concept_name)
+        print(concept)
+        output.list_concepts = list()
+        for index, sub_concept in enumerate(concept.iter_listed_concepts()):
+            sub_output = Concept(name=f"{output.name}_{index}", type="identity", string_content=None)
+            output.list_concepts.append(sub_output)
+            yield cls(model=language_model, prompt=Prompt(replace_with_suffix(prompt.template, suffix=f'_{index}')), output_concept=sub_output)
 
     def __init__(self, model, prompt, output_concept):
         super().__init__(model=model, prompt=prompt, output_concept=output_concept)
