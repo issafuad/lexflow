@@ -1,16 +1,19 @@
 from abc import ABC, abstractmethod
-from pydantic import BaseModel, StrictStr, StrictInt, StrictFloat, StrictBool, validate_call
+from pydantic import BaseModel, StrictStr, StrictInt, StrictFloat, StrictBool, validate_call, model_validator
 from pydantic.dataclasses import dataclass as pydantic_dataclass
 from typing import Literal, List, Callable, Union, Dict, Optional, Iterable
 import re
 import pprint
 import warnings
 from contextlib import contextmanager
-
 import logging
+
+from src.util.util import custom_repr
 
 logging.basicConfig(level=logging.DEBUG)
 LOGGER = logging.getLogger(__name__)
+
+
 
 
 class RegistryAccessor:
@@ -63,107 +66,132 @@ class LanguageModel(BaseModel):
         return self.generate_response(prompt_string)
 
 
-@pydantic_dataclass
-class Concept:
-    """
-    A simple utility function that doubles the input value.
-
-    Returns
-    -------
-    int or float
-        Double the input value.
-
-    Example
-    -------
-    # >>> utility_function(3)
-    6
-    """
-
+class Concept(BaseModel):
     name: StrictStr
-    type: Literal['identity', 'list'] = 'identity'
-    choice: Literal['all', 'index', 'stringify', 'random'] = 'all'
-    listify_func: Callable = listify_func
-    string_content: Union[StrictStr, None] = None
-    list_content: List[StrictStr] = None
-    list_concepts: Optional[List['Concept']] = None
+    content: Union[StrictStr, None] = None
     inputted: bool = False
     level: int = 0
 
-    def __post_init__(self):
-        if self.string_content:
+    # put name here explicitly so that concept can take the first positional arugment as the name
+    def __init__(self, name: StrictStr, **data):
+        super().__init__(name=name, **data)
+
+        # Setting `inputted` based on `content`
+        if self.content:
             self.inputted = True
 
     def get_value(self):
-        """
-        A simple utility function that doubles the input value.
-
-        Returns
-        -------
-        int or float
-            Double the input value.
-
-        Example
-        -------
-        # >>> utility_function(3)
-        6
-        """
-        if self.type == 'identity':
-            if self.string_content:
-                return self.string_content
-            else:
-                raise ValueError(f'no string value assigned to {self.__dict__}')
-        else:
-            # if list
-            if self.choice == 'all':
-                if self.list_content:
-                    return self.list_content
-                else:
-                    raise ValueError(f'no list value assigned to {self.__dict__}')
+        return self.content
 
     def assign_content(self, content):
-        if self.type == 'identity':
-            self.string_content = content
-        elif self.type == 'list':
-            self.list_content = self.listify_func(content)
-            list_concepts = list()
-            for index, val in enumerate(self.list_content):
-                new_concept = Concept(name=f"{self.name}_{index}", type="identity", string_content=val)
-                list_concepts.append(new_concept)
-            self.list_concepts = list_concepts
+        self.content = content
 
-    def iter_listed_concepts(self):
-        if self.type != 'list':
-            raise Exception(f'Concept {self} not a list type')
-        for each in self.list_concepts:
-            yield each
+    # In Python, the __str__ method is used to define a human-readable representation of an object, which is returned by the built-in str() function and is used by built-in functions like print(). On the other hand, the __repr__ method returns the "official" string representation of an object, which ideally is an expression that would recreate the same object if passed to eval().
+    def __str__(self):
+        return custom_repr(self)
 
     def __repr__(self):
-        import json
-
-        def handle_unserializable(obj):
-            # Directly return any natively serializable value
-            # if isinstance(obj, (int, float, str, bool, type(None))):
-            #     return obj
-
-            # Handle function objects
-            if callable(obj):
-                return f"<function {obj.__name__}>"
-
-            # Handle custom objects by serializing their attributes
-            elif hasattr(obj, "__dict__"):
-                return {key: handle_unserializable(value) for key, value in obj.__dict__.items()}
-
-            # Handle objects that are not directly serializable to JSON
-            else:
-                return obj
-                # raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
-
-        def custom_repr(obj):
-            return json.dumps(obj, default=handle_unserializable, sort_keys=True, indent=4, ensure_ascii=False)
-
-        return custom_repr(self.__dict__)
-        # return pprint.pformat(self.__dict__)
-
+        return self.__str__()
+#
+# TODO seems to allow extra attributes with no errors. fix
+# @pydantic_dataclass
+# class Concept:
+#     """
+#     A simple utility function that doubles the input value.
+#
+#     Returns
+#     -------
+#     int or float
+#         Double the input value.
+#
+#     Example
+#     -------
+#     # >>> utility_function(3)
+#     6
+#     """
+#
+#     name: StrictStr
+#     content: Union[StrictStr, None] = None
+#     inputted: bool = False
+#     level: int = 0
+#
+#     def __post_init__(self):
+#         if self.content:
+#             self.inputted = True
+#
+#     def get_value(self):
+#         """
+#         A simple utility function that doubles the input value.
+#
+#         Returns
+#         -------
+#         int or float
+#             Double the input value.
+#
+#         Example
+#         -------
+#         # >>> utility_function(3)
+#         6
+#         """
+#         # if self.type == 'identity':
+#         #     if self.content:
+#         #         return self.content
+#         #     else:
+#         #         raise ValueError(f'no string value assigned to {self.__dict__}')
+#         # else:
+#         #     if list
+#             # if self.choice == 'all':
+#             #     if self.list_content:
+#             #         return self.list_content
+#             #     else:
+#             #         raise ValueError(f'no list value assigned to {self.__dict__}')
+#         return self.content
+#
+#     def assign_content(self, content):
+#         # if self.type == 'identity':
+#         #     self.content = content
+#         # elif self.type == 'list':
+#         #     self.list_content = self.listify_func(content)
+#         #     list_concepts = list()
+#         #     for index, val in enumerate(self.list_content):
+#         #         new_concept = Concept(name=f"{self.name}_{index}", type="identity", string_content=val)
+#         #         list_concepts.append(new_concept)
+#         #     self.list_concepts = list_concepts
+#         self.content = content
+#
+#     def iter_listed_concepts(self):
+#         if self.type != 'list':
+#             raise Exception(f'Concept {self} not a list type')
+#         for each in self.list_concepts:
+#             yield each
+#
+#     def __repr__(self):
+#         import json
+#
+#         def handle_unserializable(obj):
+#             # Directly return any natively serializable value
+#             # if isinstance(obj, (int, float, str, bool, type(None))):
+#             #     return obj
+#
+#             # Handle function objects
+#             if callable(obj):
+#                 return f"<function {obj.__name__}>"
+#
+#             # Handle custom objects by serializing their attributes
+#             elif hasattr(obj, "__dict__"):
+#                 return {key: handle_unserializable(value) for key, value in obj.__dict__.items()}
+#
+#             # Handle objects that are not directly serializable to JSON
+#             else:
+#                 return obj
+#                 # raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
+#
+#         def custom_repr(obj):
+#             return json.dumps(obj, default=handle_unserializable, sort_keys=True, indent=4, ensure_ascii=False)
+#
+#         return custom_repr(self.__dict__)
+#         # return pprint.pformat(self.__dict__)
+#
 
 @pydantic_dataclass
 class Prompt:
@@ -234,30 +262,10 @@ class ConceptRegistry:
     #     return '\n'.join(lines)
 
     def __repr__(self):
-        import json
-
-        def handle_unserializable(obj):
-            # Directly return any natively serializable value
-            # if isinstance(obj, (int, float, str, bool, type(None))):
-            #     return obj
-
-            # Handle function objects
-            if callable(obj):
-                return f"<function {obj.__name__}>"
-
-            # Handle custom objects by serializing their attributes
-            elif hasattr(obj, "__dict__"):
-                return {key: handle_unserializable(value) for key, value in obj.__dict__.items()}
-
-            # Handle objects that are not directly serializable to JSON
-            else:
-                return obj
-                # raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
-
-        def custom_repr(obj):
-            return json.dumps(obj, default=handle_unserializable, sort_keys=True, indent=4, ensure_ascii=False)
-
         return custom_repr(self.__dict__)
+
+    def __str__(self):
+        self.__repr__()
 
     # def __repr__(self):
     #     lines = ['ConceptRegistry:']
@@ -276,20 +284,8 @@ class Executable(BaseModel, ABC):
     memory: List = []
 
     @abstractmethod
-    def run(self, callback: Optional = None) -> Concept:
+    def run(self, callback: Optional = None) -> List[Concept]:
         pass
-
-    @classmethod
-    def create(cls,*args, **kwargs):
-        # Creates a single instance of Executable
-        return cls(*args, **kwargs)
-
-    @classmethod
-    def create_iterable(cls, configs: List[Dict]):
-        """
-        Creates an iterable of Executable instances based on the list of configurations
-        """
-        return (cls(**config) for config in configs)
 
 
 class ExecutableOrchestrator(BaseModel, ABC):
@@ -308,7 +304,7 @@ class ProbabilisticComponent(Executable):
     model: LanguageModel
     prompt: Prompt
     # input_concepts:
-    output_concept: Concept
+    output_concept_name: StrictStr
     # the inputs names are specified in the template.
     # the inputs are always specified by strings. because they've already been created
 
@@ -333,43 +329,47 @@ class ProbabilisticComponent(Executable):
         for index, sub_concept in enumerate(concept.iter_listed_concepts()):
             sub_output = Concept(name=f"{output.name}_{index}", type="identity", string_content=None)
             output.list_concepts.append(sub_output)
-            yield cls(model=language_model, prompt=Prompt(replace_with_suffix(prompt.template, suffix=f'_{index}')), output_concept=sub_output)
+            yield cls(model=language_model, prompt=Prompt(replace_with_suffix(prompt.template, suffix=f'_{index}')), output_concept_name=sub_output)
 
-    def __init__(self, model, prompt, output_concept):
-        super().__init__(model=model, prompt=prompt, output_concept=output_concept)
+    def __init__(self, model, prompt, output_concept_name):
+        super().__init__(model=model, prompt=prompt, output_concept_name=output_concept_name)
 
     # @validate_call
-    def run(self, callback=None) -> Concept:
+    def run(self, callback=None) -> List[Concept]:
         concept_registry = RegistryAccessor.get_current_registry()
         LOGGER.debug(f'Running object: {self.__dict__}')
 
         self.prompt.fill(concept_registry.concepts)
         response = self.model.generate_response(self.prompt.filled_prompt)
-        self.output_concept.assign_content(content=response)
+        output_concept = Concept(self.output_concept_name)
+        output_concept.assign_content(content=response)
 
         # TODO fix what is added to the memory
         self.memory.append(response)
-        return self.output_concept
+        return [output_concept]
 
 
 class SymbolicComponent(Executable):
     function: Callable
     # the function should return the same number of the number o the list of output concepts
     input_concept_names: List[StrictStr]
-    output_concepts: List[Concept]
+    output_concept_names: List[StrictStr]
 
-    def __init__(self, function, input_concepts, output_concepts):
-        super().__init__(function=function, input_concepts=input_concepts, output_concepts=output_concepts)
+    def __init__(self, function, input_concept_names, output_concept_names):
+        super().__init__(function=function, input_concept_names=input_concept_names, output_concept_names=output_concept_names)
 
     def run(self, callback=None) -> List[Concept]:
         concept_registry = RegistryAccessor.get_current_registry()
         LOGGER.debug(f'Running object: {self.__dict__}')
-        input_concepts = {concept_registry.concepts[name] for name in self.input_concept_names}
-        for output_string, output_concept in zip(self.function(input_concepts), self.output_concepts):
+        print(self.input_concept_names)
+        print(concept_registry.concepts)
+        input_concepts = {name: concept_registry.concepts[name] for name in self.input_concept_names}
+        output_concepts = list()
+        for output_string, output_concept_name in zip(self.function(input_concepts), self.output_concept_names):
+            output_concept = Concept(output_concept_name)
             output_concept.assign_content(output_string)
-        return self.output_concepts
-
-
+            output_concepts.append(output_concept)
+        return output_concepts
 
 
 class Chain(ExecutableOrchestrator):
@@ -383,9 +383,10 @@ class Chain(ExecutableOrchestrator):
 
         for component in self.components:
             if isinstance(component, Executable):
-                output_concept: Concept = component.run(callback)
-                output_concept.level = level
-                concept_registry.update_concepts(output_concept)
+                output_concept_list: List[Concept] = component.run(callback)
+                for output_concept in output_concept_list:
+                    output_concept.level = level
+                    concept_registry.update_concepts(output_concept)
                 level += 1
             elif isinstance(component, ExecutableOrchestrator):
                 level = component._run(callback, level=level)
@@ -411,9 +412,10 @@ class Threads(ExecutableOrchestrator):
         outputted_concepts_list = list()
         for component in self.components:
             if isinstance(component, Executable):
-                output_concept: Concept = component.run(callback)
-                output_concept.level = level
-                outputted_concepts_list.append(output_concept)
+                output_concept_list: List[Concept] = component.run(callback)
+                for output_concept in output_concept_list:
+                    output_concept.level = level
+                    outputted_concepts_list.append(output_concept)
 
             elif isinstance(component, ExecutableOrchestrator):
                 level = component._run(callback=callback, level=level)
