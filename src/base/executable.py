@@ -92,114 +92,15 @@ class Concept(BaseModel):
 
     def __repr__(self):
         return self.__str__()
-#
-# TODO seems to allow extra attributes with no errors. fix
-# @pydantic_dataclass
-# class Concept:
-#     """
-#     A simple utility function that doubles the input value.
-#
-#     Returns
-#     -------
-#     int or float
-#         Double the input value.
-#
-#     Example
-#     -------
-#     # >>> utility_function(3)
-#     6
-#     """
-#
-#     name: StrictStr
-#     content: Union[StrictStr, None] = None
-#     inputted: bool = False
-#     level: int = 0
-#
-#     def __post_init__(self):
-#         if self.content:
-#             self.inputted = True
-#
-#     def get_value(self):
-#         """
-#         A simple utility function that doubles the input value.
-#
-#         Returns
-#         -------
-#         int or float
-#             Double the input value.
-#
-#         Example
-#         -------
-#         # >>> utility_function(3)
-#         6
-#         """
-#         # if self.type == 'identity':
-#         #     if self.content:
-#         #         return self.content
-#         #     else:
-#         #         raise ValueError(f'no string value assigned to {self.__dict__}')
-#         # else:
-#         #     if list
-#             # if self.choice == 'all':
-#             #     if self.list_content:
-#             #         return self.list_content
-#             #     else:
-#             #         raise ValueError(f'no list value assigned to {self.__dict__}')
-#         return self.content
-#
-#     def assign_content(self, content):
-#         # if self.type == 'identity':
-#         #     self.content = content
-#         # elif self.type == 'list':
-#         #     self.list_content = self.listify_func(content)
-#         #     list_concepts = list()
-#         #     for index, val in enumerate(self.list_content):
-#         #         new_concept = Concept(name=f"{self.name}_{index}", type="identity", string_content=val)
-#         #         list_concepts.append(new_concept)
-#         #     self.list_concepts = list_concepts
-#         self.content = content
-#
-#     def iter_listed_concepts(self):
-#         if self.type != 'list':
-#             raise Exception(f'Concept {self} not a list type')
-#         for each in self.list_concepts:
-#             yield each
-#
-#     def __repr__(self):
-#         import json
-#
-#         def handle_unserializable(obj):
-#             # Directly return any natively serializable value
-#             # if isinstance(obj, (int, float, str, bool, type(None))):
-#             #     return obj
-#
-#             # Handle function objects
-#             if callable(obj):
-#                 return f"<function {obj.__name__}>"
-#
-#             # Handle custom objects by serializing their attributes
-#             elif hasattr(obj, "__dict__"):
-#                 return {key: handle_unserializable(value) for key, value in obj.__dict__.items()}
-#
-#             # Handle objects that are not directly serializable to JSON
-#             else:
-#                 return obj
-#                 # raise TypeError(f"Object of type {obj.__class__.__name__} is not JSON serializable")
-#
-#         def custom_repr(obj):
-#             return json.dumps(obj, default=handle_unserializable, sort_keys=True, indent=4, ensure_ascii=False)
-#
-#         return custom_repr(self.__dict__)
-#         # return pprint.pformat(self.__dict__)
-#
 
-@pydantic_dataclass
-class Prompt:
+
+class Prompt(BaseModel):
     template: StrictStr
     inputs: List[StrictStr] = None
     filled_prompt: Union[StrictStr, None] = None
 
-    def __post_init__(self):
+    def __init__(self, template: StrictStr, **data):
+        super().__init__(template=template, **data)
         self.inputs = re.findall(r'\{(.*?)\}', self.template)
 
     def fill(self, running_concepts: Dict[StrictStr, Concept]):
@@ -216,20 +117,19 @@ class Prompt:
         return pprint.pformat(self.__dict__)
 
 
-@pydantic_dataclass
-class ConceptRegistry:
-    _initial_concepts: List[Concept]
-    _concepts: Dict[StrictStr, Concept] = None
+class ConceptRegistry(BaseModel):
+    initial_concepts: List[Concept]
+    concepts: Dict[StrictStr, Concept] = None
 
-    def __post_init__(self):
-        # Ensure that there are no duplicate concept names
-        names = [concept.name for concept in self._initial_concepts]
-        assert len(names) == len(set(names)), "Duplicate cencept names detected"
-        self._concepts = {concept.name: concept for concept in self._initial_concepts}
+    def __init__(self, initial_concepts: List[Concept], **data):
+        super().__init__(initial_concepts=initial_concepts, **data)
+        names = [concept.name for concept in self.initial_concepts]
+        assert len(names) == len(set(names)), "Duplicate concept names detected"
+        self.concepts = {concept.name: concept for concept in self.initial_concepts}
 
     @property
     def concepts(self) -> Dict[StrictStr, Concept]:
-        return self._concepts
+        return self.concepts
 
     @property
     def concepts_flattened(self) -> Dict[StrictStr, Concept]:
@@ -243,7 +143,7 @@ class ConceptRegistry:
                 for sub_concept in concept.list_concepts:
                     _flatten_concept(sub_concept)
 
-        for concept in self._concepts.values():
+        for concept in self.concepts.values():
             _flatten_concept(concept)
 
         return flattened_concepts
@@ -253,31 +153,11 @@ class ConceptRegistry:
             warnings.warn(f'Overwrite Warning: \n{self.concepts[concept.name]}\n\n Is being overwritten by:\n {concept}')
         self.concepts[concept.name] = concept
 
-    # def __repr__(self):
-    #     lines = ['ConceptRegistry:']
-    #     for name, concept in self._concepts.items():
-    #         lines.append(f"  - {name}:")
-    #         lines.append(f"    String content: {concept.string_content}")
-    #         lines.append(f"    List content: {concept.list_content}")
-    #     return '\n'.join(lines)
-
     def __repr__(self):
         return custom_repr(self.__dict__)
 
     def __str__(self):
         self.__repr__()
-
-    # def __repr__(self):
-    #     lines = ['ConceptRegistry:']
-    #
-    #     # Sort the concepts by their level
-    #     sorted_concepts = sorted(self._concepts.values(), key=lambda c: c.level)
-    #
-    #     for concept in sorted_concepts:
-    #         lines.append(f"  - {concept.name}:")
-    #         for attr_name, attr_value in vars(concept).items():
-    #             lines.append(f"    {attr_name.capitalize()}: {attr_value}")
-    #     return '\n'.join(lines)
 
 
 class Executable(BaseModel, ABC):
